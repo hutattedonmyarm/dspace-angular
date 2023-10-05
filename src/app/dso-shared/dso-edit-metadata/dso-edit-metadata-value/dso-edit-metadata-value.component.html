@@ -2,9 +2,29 @@
      cdkDrag (cdkDragStarted)="dragging.emit(true)" (cdkDragEnded)="dragging.emit(false)"
      [ngClass]="{ 'ds-warning': mdValue.reordered || mdValue.change === DsoEditMetadataChangeTypeEnum.UPDATE, 'ds-danger': mdValue.change === DsoEditMetadataChangeTypeEnum.REMOVE, 'ds-success': mdValue.change === DsoEditMetadataChangeTypeEnum.ADD, 'h-100': isOnlyValue }">
   <div class="flex-grow-1 ds-flex-cell ds-value-cell d-flex align-items-center" *ngVar="(mdRepresentation$ | async) as mdRepresentation" role="cell">
-    <div class="dont-break-out preserve-line-breaks" *ngIf="!mdValue.editing && !mdRepresentation">{{ mdValue.newValue.value }}</div>
-    <textarea class="form-control" rows="5" *ngIf="mdValue.editing && !mdRepresentation" [(ngModel)]="mdValue.newValue.value"
-              [dsDebounce]="300" (onDebounce)="confirm.emit(false)"></textarea>
+      <div class="dont-break-out preserve-line-breaks" *ngIf="!mdValue.editing && !mdRepresentation">
+        {{ mdValue.newValue.value }}
+        <div *ngIf="mdValue.newValue.authority">
+          <small style="font-size: small;">{{ mdValue.newValue.authority }}</small>
+        </div>
+      </div>
+      <div [ngClass]="{'w-100 position-relative': mdValue.editing && !mdRepresentation}">
+        <textarea class="form-control" rows="5" *ngIf="mdValue.editing && !mdRepresentation" [(ngModel)]="mdValue.newValue.value"
+                  [dsDebounce]="200" (onDebounce)="valueChanged()">
+        </textarea>
+      <div *ngIf="mdValue.newValue.authority && mdValue.editing && !mdRepresentation">
+        <small style="font-size: small;">{{ mdValue.newValue.authority }}</small>
+      </div>
+      <div class="autocomplete dropdown-menu" [ngClass]="{'show': (authoritySuggestions | async)?.length > 0}">
+        <div class="dropdown-list">
+          <div *ngFor="let authoritySuggestion of (authoritySuggestions | async)">
+            <a href="javascript:void(0);" class="d-block dropdown-item" (click)="select(authoritySuggestion)">
+              <span [innerHTML]="authoritySuggestion.display"></span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="d-flex" *ngIf="mdRepresentation">
       <a class="mr-2" target="_blank" [routerLink]="mdRepresentationItemRoute$ | async">{{ mdRepresentationName$ | async }}</a>
       <ds-type-badge [object]="mdRepresentation"></ds-type-badge>

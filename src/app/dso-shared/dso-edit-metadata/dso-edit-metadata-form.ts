@@ -408,6 +408,7 @@ export class DsoEditMetadataForm {
                 replaceOperations.push(new MetadataPatchReplaceOperation(field, value.originalValue.place, {
                   value: value.newValue.value,
                   language: value.newValue.language,
+                  authority: value.newValue.authority,
                 }));
               }
             } else if (value.change === DsoEditMetadataChangeType.REMOVE) {
@@ -416,6 +417,7 @@ export class DsoEditMetadataForm {
               addOperations.push(new MetadataPatchAddOperation(field, {
                 value: value.newValue.value,
                 language: value.newValue.language,
+                authority: value.newValue.authority,
               }));
             } else {
               console.warn('Illegal metadata change state detected for', value);

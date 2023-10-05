@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, OnInit, Output, SimpleChanges } from '@angular/core';
 import { DsoEditMetadataChangeType, DsoEditMetadataValue } from '../dso-edit-metadata-form';
 import { Observable } from 'rxjs/internal/Observable';
 import {
@@ -8,10 +8,19 @@ import {
 import { RelationshipDataService } from '../../../core/data/relationship-data.service';
 import { DSpaceObject } from '../../../core/shared/dspace-object.model';
 import { ItemMetadataRepresentation } from '../../../core/shared/metadata-representation/item/item-metadata-representation.model';
-import { map } from 'rxjs/operators';
+import { filter, map, switchMap, tap } from 'rxjs/operators';
 import { getItemPageRoute } from '../../../item-page/item-page-routing-paths';
 import { DSONameService } from '../../../core/breadcrumbs/dso-name.service';
 import { EMPTY } from 'rxjs/internal/observable/empty';
+import { ConfigurationDataService } from 'src/app/core/data/configuration-data.service';
+import { BehaviorSubject, of } from 'rxjs';
+import { hasValue } from 'src/app/shared/empty.util';
+import { VocabularyService } from 'src/app/core/submission/vocabularies/vocabulary.service';
+import { VocabularyOptions } from 'src/app/core/submission/vocabularies/models/vocabulary-options.model';
+import { PageInfo } from 'src/app/core/shared/page-info.model';
+import { VocabularyEntry } from 'src/app/core/submission/vocabularies/models/vocabulary-entry.model';
+import { ConfidenceType } from 'src/app/core/shared/confidence-type';
+
 
 @Component({
   selector: 'ds-dso-edit-metadata-value',
@@ -21,7 +30,7 @@ import { EMPTY } from 'rxjs/internal/observable/empty';
 /**
  * Component displaying a single editable row for a metadata value
  */
-export class DsoEditMetadataValueComponent implements OnInit {
+export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
   /**
    * The parent {@link DSpaceObject} to display a metadata form for
    * Also used to determine metadata-representations in case of virtual metadata
@@ -38,6 +47,19 @@ export class DsoEditMetadataValueComponent implements OnInit {
    * Determines i18n messages
    */
   @Input() dsoType: string;
+
+  /**
+   * Name of the existing metadata field,
+   * if the value of an existing field is being edited 
+   */
+  @Input() mdField?: string;
+
+  /**
+   * Name of the new metadata field,
+   * if a new metadatafield is being added
+   */ 
+  @Input() newMdField?: string;
+
 
   /**
    * Observable to check if the form is being saved or not
@@ -97,13 +119,116 @@ export class DsoEditMetadataValueComponent implements OnInit {
    */
   mdRepresentationName$: Observable<string | null>;
 
+  authoritySubscribed = false;
+
+  /**
+   * Name of the controlled vocabulary choice plugin for the current metadata field
+   */
+
+  controlledVocabulary: BehaviorSubject<string | null> = new BehaviorSubject(null);
+
+  /*
+   * If requests loading authority suggestions are in flight
+   */
+  loadingAuthoritySuggestions: BehaviorSubject<boolean> = new BehaviorSubject(false);
+  
+  /**
+   * If the currently edited metadatafield is under authority control
+   */
+  isAuthorityField: BehaviorSubject<boolean> = new BehaviorSubject(false);
+
+  /**
+   * Name of the metadata field being edited
+   */ 
+  protected currentMdField: BehaviorSubject<string | null> = new BehaviorSubject(null);
+  
+  /**
+   * List of choice plugin suggestions
+   */
+  authoritySuggestions: BehaviorSubject<VocabularyEntry[]> = new BehaviorSubject([]);
+
+
   constructor(protected relationshipService: RelationshipDataService,
-              protected dsoNameService: DSONameService) {
+              protected dsoNameService: DSONameService,
+              protected configService: ConfigurationDataService,
+              protected vocabService: VocabularyService) {
   }
+
 
   ngOnInit(): void {
     this.initVirtualProperties();
   }
+
+  valueChanged() {
+    if (hasValue(this.controlledVocabulary.value) && 
+        hasValue(this.mdValue?.newValue?.value)) {
+      
+      this.loadingAuthoritySuggestions.next(true);
+      this.vocabService.getVocabularyEntriesByValue(
+        this.mdValue.newValue.value,
+        false,
+        new VocabularyOptions(this.controlledVocabulary.value),
+        new PageInfo()
+      ).pipe(
+        filter(x => x.hasCompleted),
+        tap(() => this.loadingAuthoritySuggestions.next(false)),
+        filter(x => x.hasSucceeded && hasValue(x.payload)),
+        map(x => x.payload.page),
+        filter(x => !( // If there is exactly one hit with the same value and authority as the current MD value
+          x.length === 1 && // It's because the user *just* selected it. Let the autocomplete box disappear then
+          x[0].value === this.mdValue?.newValue?.value && 
+          x[0].authority === this.mdValue?.newValue?.authority)),
+      ).subscribe(x => this.authoritySuggestions.next(x));
+    }
+    // Not using controlled vocabulary, but still an authority field (e.g. dc.identifier.ldap)
+    // Set the value as authority value as well
+    if (!hasValue(this.controlledVocabulary.value) && 
+        hasValue(this.mdValue?.newValue?.value) && 
+        this.isAuthorityField.value) {
+      this.mdValue.newValue.authority = this.mdValue.newValue.value;
+      this.mdValue.newValue.confidence = ConfidenceType.CF_ACCEPTED;
+    }
+    this.confirm.emit(false);
+  }
+
+  select(entry: VocabularyEntry) {
+    this.mdValue.newValue.value = entry.value;
+    this.mdValue.newValue.authority = entry.authority;
+    this.mdValue.newValue.confidence = ConfidenceType.CF_ACCEPTED;
+    this.authoritySuggestions.next([]);
+  }
+
+  // Check if the current field is using a choices plugin or is authority controlled
+  subscribeToAuthority() {
+    this.authoritySubscribed = true;
+    this.currentMdField.pipe(
+      switchMap(x => hasValue(x) ? this.configService.findByPropertyName(`choices.plugin.${x}`) : of(null)),
+      filter(x => x !== null && x.hasSucceeded && hasValue(x.payload)),
+      map(x => x.payload.values),
+      filter(x => x.length > 0),
+      map(x => x[0]),
+    ).subscribe(prop => this.controlledVocabulary.next(prop));
+    this.currentMdField.pipe(
+      switchMap(x => hasValue(x) ? this.configService.findByPropertyName(`authority.controlled.${x}`) : of(null)),
+      filter(x => x !== null && x.hasSucceeded && hasValue(x.payload)),
+      map(x => x.payload.values),
+      filter(x => x.length > 0),
+      map(x => x[0]),
+    ).subscribe(prop => this.isAuthorityField.next(prop === 'true'));
+  }
+
+  
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes.mdField) {
+      this.currentMdField.next(changes.mdField.currentValue);
+    } else if (changes.newMdField) {
+      if (!this.authoritySubscribed) {
+        this.subscribeToAuthority();
+      }
+      this.currentMdField.next(changes.newMdField.currentValue);
+    }
+  }
+
 
   /**
    * Initialise potential properties of a virtual metadata value
