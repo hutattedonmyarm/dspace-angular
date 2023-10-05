@@ -50,14 +50,14 @@ export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
 
   /**
    * Name of the existing metadata field,
-   * if the value of an existing field is being edited 
+   * if the value of an existing field is being edited
    */
   @Input() mdField?: string;
 
   /**
    * Name of the new metadata field,
    * if a new metadatafield is being added
-   */ 
+   */
   @Input() newMdField?: string;
 
 
@@ -131,7 +131,7 @@ export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
    * If requests loading authority suggestions are in flight
    */
   loadingAuthoritySuggestions: BehaviorSubject<boolean> = new BehaviorSubject(false);
-  
+
   /**
    * If the currently edited metadatafield is under authority control
    */
@@ -139,9 +139,9 @@ export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
 
   /**
    * Name of the metadata field being edited
-   */ 
+   */
   protected currentMdField: BehaviorSubject<string | null> = new BehaviorSubject(null);
-  
+
   /**
    * List of choice plugin suggestions
    */
@@ -160,9 +160,9 @@ export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
   }
 
   valueChanged() {
-    if (hasValue(this.controlledVocabulary.value) && 
+    if (hasValue(this.controlledVocabulary.value) &&
         hasValue(this.mdValue?.newValue?.value)) {
-      
+
       this.loadingAuthoritySuggestions.next(true);
       this.vocabService.getVocabularyEntriesByValue(
         this.mdValue.newValue.value,
@@ -176,14 +176,14 @@ export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
         map(x => x.payload.page),
         filter(x => !( // If there is exactly one hit with the same value and authority as the current MD value
           x.length === 1 && // It's because the user *just* selected it. Let the autocomplete box disappear then
-          x[0].value === this.mdValue?.newValue?.value && 
+          x[0].value === this.mdValue?.newValue?.value &&
           x[0].authority === this.mdValue?.newValue?.authority)),
       ).subscribe(x => this.authoritySuggestions.next(x));
     }
     // Not using controlled vocabulary, but still an authority field (e.g. dc.identifier.ldap)
     // Set the value as authority value as well
-    if (!hasValue(this.controlledVocabulary.value) && 
-        hasValue(this.mdValue?.newValue?.value) && 
+    if (!hasValue(this.controlledVocabulary.value) &&
+        hasValue(this.mdValue?.newValue?.value) &&
         this.isAuthorityField.value) {
       this.mdValue.newValue.authority = this.mdValue.newValue.value;
       this.mdValue.newValue.confidence = ConfidenceType.CF_ACCEPTED;
@@ -217,7 +217,7 @@ export class DsoEditMetadataValueComponent implements OnInit, OnChanges {
     ).subscribe(prop => this.isAuthorityField.next(prop === 'true'));
   }
 
-  
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes.mdField) {
       this.currentMdField.next(changes.mdField.currentValue);
